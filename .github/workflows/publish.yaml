@@ -49,36 +49,3 @@ jobs:
           releaseName: '__VERSION__'
           releaseDraft: true
           args: ${{ matrix.args }}
-
-      - name: setup .NET
-        if: matrix.platform == 'windows-latest'
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: 7.0.405
-
-      - name: clone thunderstore cli (fork)
-        uses: actions/checkout@v4
-        if: matrix.platform == 'windows-latest'
-        with:
-          repository: Kesomannen/thunderstore-cli
-          path: tcli
-
-      - name: build thunderstore cli
-        if: matrix.platform == 'windows-latest'
-        working-directory: tcli/ThunderstoreCLI
-        run: dotnet build --configuration Release
-
-      - name: publish to thunderstore
-        if: matrix.platform == 'windows-latest'
-        env:
-          TCLI_AUTH_TOKEN: ${{ secrets.THUNDERSTORE_TOKEN }}
-        run: ./tcli/ThunderstoreCLI/bin/release/net7.0/tcli.exe publish --package-version ${{ steps.tauri.outputs.appVersion }}
-
-      - name: update latest.json github gist
-        uses: exuanbo/actions-deploy-gist@v1
-        if: matrix.platform == 'windows-latest'
-        with:
-          token: ${{ secrets.GIST_TOKEN }}
-          gist_id: 58b4f08009e7b7b5baaea253ebccb94d
-          gist_description: Auto-updater endpoint for gale
-          file_path: latest.json
