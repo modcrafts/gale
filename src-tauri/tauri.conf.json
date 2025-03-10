@@ -14,7 +14,6 @@
 		"copyright": "",
 		"targets": "all",
 		"externalBin": [],
-		"createUpdaterArtifacts": true,
 		"icon": [
 			"icons/32x32.png",
 			"icons/128x128.png",
@@ -44,12 +43,6 @@
 		}
 	},
 	"plugins": {
-		"updater": {
-			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNDRkNCMzE4NDIyOTQ1QjQKUldTMFJTbENHTFA4UE9Fd1RocjRDRm9uVmdiUlUxdmw1ZEwvaXRJZW45VFVSeXozUkYxaUFmZEsK",
-			"endpoints": [
-				"https://gist.githubusercontent.com/Kesomannen/58b4f08009e7b7b5baaea253ebccb94d/raw/"
-			]
-		},
 		"deep-link": {
 			"desktop": {
 				"schemes": ["ror2mm"]
