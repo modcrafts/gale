@@ -109,71 +109,24 @@ pub(super) async fn fetch_packages(
     let state = app.state::<Mutex<Thunderstore>>();
     let client = &app.state::<NetworkClient>().0;
 
-    let url = format!("https://thunderstore.io/c/{}/api/v1/package/", game.slug);
-    let mut response = client.get(url).send().await?.error_for_status()?;
+    let primary_url = format!("https://thunderstore.io/c/{}/api/v1/package/", game.slug);
+    let mut package_buffer = fetch_and_parse_packages(client, &primary_url).await?;
 
-    let mut i = 0;
-    let mut package_count = 0;
+    if game.slug == "lethal-company" {
+        let extra_url = "https://cdn.potatoepet.de/c/lethal-company/api/v1/package/";
+        let extra_packages = fetch_and_parse_packages(client, extra_url).await?;
+        package_buffer.extend(extra_packages);
+    }
 
-    let mut byte_buffer = Vec::new();
-    let mut str_buffer = String::new();
-    let mut package_buffer = IndexMap::new();
-
+    let package_count = package_buffer.len();
     let start_time = Instant::now();
     let mut last_update = Instant::now();
 
-    // response is just one long JSON array
-    while let Some(chunk) = response.chunk().await? {
-        byte_buffer.extend_from_slice(&chunk);
-        let Ok(chunk) = str::from_utf8(&byte_buffer) else {
-            continue;
-        };
-
-        if i == 0 {
-            str_buffer.extend(chunk.chars().skip(1)); // remove leading [
-        } else {
-            str_buffer.push_str(chunk);
-        }
-
-        byte_buffer.clear();
-
-        // hacky solution to find the end of every package but what can you do
-        while let Some(index) = str_buffer.find("}]},") {
-            let (json, _) = str_buffer.split_at(index + 3);
-
-            match serde_json::from_str::<PackageListing>(json) {
-                Ok(package) => {
-                    if !EXCLUDED_PACKAGES.contains(&package.full_name()) {
-                        package_buffer.insert(package.uuid, package);
-                        package_count += 1;
-                    }
-                }
-                Err(err) => warn!("failed to deserialize package: {}", err),
-            }
-
-            str_buffer.replace_range(..index + 4, "");
-        }
-
-        // do this in bigger chunks to not have to lock the state too often
-        if write_directly && package_buffer.len() >= INSERT_EVERY {
-            let mut state = state.lock().unwrap();
-            state.packages.extend(package_buffer.drain(..));
-        }
-
-        if last_update.elapsed() >= UPDATE_INTERVAL {
-            emit_update(package_count, app);
-            last_update = Instant::now();
-        }
-
-        i += 1;
-    }
-
-    let mut state = state.lock().unwrap();
     if write_directly {
-        // add any remaining packages
-        state.packages.extend(package_buffer.into_iter());
+        let mut state = state.lock().unwrap();
+        state.packages.extend(package_buffer.drain(..));
     } else {
-        // remove all packages and replace them with the new ones
+        let mut state = state.lock().unwrap();
         state.packages = package_buffer;
     }
 
@@ -182,21 +135,43 @@ pub(super) async fn fetch_packages(
 
     info!(
         "fetched {} packages for {} in {:?}",
-        state.packages.len(),
-        game.slug,
-        start_time.elapsed()
+        package_count, game.slug, start_time.elapsed()
     );
 
     app.emit("status_update", None::<String>).ok();
 
     return Ok(());
 
-    fn emit_update(mods: usize, app: &AppHandle) {
-        app.emit(
-            "status_update",
-            Some(format!("Fetching mods from Thunderstore... {}", mods)),
-        )
-        .ok();
+    async fn fetch_and_parse_packages(client: &reqwest::Client, url: &str) -> Result<IndexMap<String, PackageListing>> {
+        let mut response = client.get(url).send().await?.error_for_status()?;
+        let mut byte_buffer = Vec::new();
+        let mut str_buffer = String::new();
+        let mut package_buffer = IndexMap::new();
+
+        while let Some(chunk) = response.chunk().await? {
+            byte_buffer.extend_from_slice(&chunk);
+            let Ok(chunk) = str::from_utf8(&byte_buffer) else {
+                continue;
+            };
+
+            str_buffer.push_str(chunk);
+            byte_buffer.clear();
+
+            while let Some(index) = str_buffer.find("}]},") {
+                let (json, _) = str_buffer.split_at(index + 3);
+
+                match serde_json::from_str::<PackageListing>(json) {
+                    Ok(package) => {
+                        if !EXCLUDED_PACKAGES.contains(&package.full_name()) {
+                            package_buffer.insert(package.uuid.clone(), package);
+                        }
+                    }
+                    Err(err) => warn!("failed to deserialize package: {}", err),
+                }
+                str_buffer.replace_range(..index + 4, "");
+            }
+        }
+        Ok(package_buffer)
     }
 }
 
