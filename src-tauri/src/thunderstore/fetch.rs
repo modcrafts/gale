@@ -122,11 +122,10 @@ pub(super) async fn fetch_packages(
     let start_time = Instant::now();
     let mut last_update = Instant::now();
 
+    let mut state = state.lock().unwrap();
     if write_directly {
-        let mut state = state.lock().unwrap();
         state.packages.extend(package_buffer.drain(..));
     } else {
-        let mut state = state.lock().unwrap();
         state.packages = package_buffer;
     }
 
